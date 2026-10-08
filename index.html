@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Boston Bike Lanes</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
+    <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+    <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
+
+    <style>
+        html, body, #map { height: 100%; margin: 0; }
+        body { font-family: system-ui, sans-serif; }
+        .legend { background: white; padding: 8px 10px; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,.3); font-size: 13px; line-height: 1.6; }
+        .legend h4 { margin: 0 0 4px; font-size: 14px; }
+        .legend label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        .legend .swatch { display: inline-block; width: 24px; height: 4px; }
+        .legend button { border: 0; background: none; cursor: pointer; padding: 0; font: inherit; }
+        .legend-open { font-size: 22px; line-height: 1; }
+        .legend-close { float: right; margin-left: 12px; font-size: 16px; color: #555; }
+        .legend.collapsed { padding: 6px; }
+        .legend.collapsed .legend-body, .legend:not(.collapsed) .legend-open { display: none; }
+    </style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+    // Roads get one line per side (left/right relative to the OSM way direction);
+    // standalone cycleways and paths get a single centered line.
+    const TYPES = [
+        { key: 'cycleway', label: 'Cycleway (off-road)',     color: '#1a7f37' },
+        { key: 'track',    label: 'Separated bike lane',     color: '#1a7f37' },
+        { key: 'lane',     label: 'Standard bike lane',      color: '#1a7f37' },
+        { key: 'path',     label: 'Shared use path',         color: '#8250df' },
+        { key: 'shared',   label: 'Shared bike lane',        color: '#d1242f' },
+    ];
+    const colorOf = key => TYPES.find(t => t.key === key).color;
+    const colorMatch = prop => ['match', ['get', prop], ...TYPES.flatMap(t => [t.key, t.color]), '#888'];
+
+    // Gap between the two side lines grows with zoom so they stay distinct.
+    const width = ['interpolate', ['linear'], ['zoom'], 12, 1.5, 16, 3, 19, 5];
+    const offset = sign => ['interpolate', ['linear'], ['zoom'], 12, sign * 1.5, 16, sign * 3, 19, sign * 6];
+
+    const LAYERS = [
+        { id: 'bike-left',   prop: 'left',  filter: ['==', ['get', 'kind'], 'road'], offset: offset(-1) },
+        { id: 'bike-right',  prop: 'right', filter: ['==', ['get', 'kind'], 'road'], offset: offset(1) },
+        { id: 'bike-center', prop: 'kind',  filter: ['!=', ['get', 'kind'], 'road'], offset: 0 },
+    ];
+
+    const map = L.map('map', { zoomControl: false }).setView([42.342144, -71.121273], 16);
+
+    const gl = L.maplibreGL({
+        style: 'https://tiles.openfreemap.org/styles/positron',
+        attribution: '<a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
+    const glMap = gl.getMaplibreMap();
+
+    const hidden = new Set();
+    function applyFilters() {
+        const visible = ['literal', TYPES.map(t => t.key).filter(k => !hidden.has(k))];
+        for (const l of LAYERS) {
+            glMap.setFilter(l.id, ['all', l.filter, ['in', ['get', l.prop], visible]]);
+        }
+    }
+
+    glMap.on('load', () => {
+        glMap.addSource('bikelanes', { type: 'geojson', data: 'bikelanes.geojson' });
+        for (const l of LAYERS) {
+            glMap.addLayer({
+                id: l.id,
+                type: 'line',
+                source: 'bikelanes',
+                layout: { 'line-cap': 'butt', 'line-join': 'round' },
+                paint: { 'line-color': colorMatch(l.prop), 'line-width': width, 'line-offset': l.offset },
+            });
+        }
+        applyFilters();
+    });
+
+    const sideLabel = v => v ? TYPES.find(t => t.key === v).label : 'none';
+
+    map.on('click', e => {
+        const pt = glMap.project([e.latlng.lng, e.latlng.lat]);
+        const box = [[pt.x - 5, pt.y - 5], [pt.x + 5, pt.y + 5]];
+        const f = glMap.queryRenderedFeatures(box, { layers: LAYERS.map(l => l.id) })[0];
+        if (!f) return;
+        const p = f.properties;
+        const tags = JSON.parse(p.tags || '{}');
+        const detail = p.kind === 'road'
+            ? `Left: ${sideLabel(p.left)}<br>Right: ${sideLabel(p.right)}`
+            : sideLabel(p.kind);
+        L.popup().setLatLng(e.latlng).setContent(
+            `<strong>${p.name || 'Unnamed'}</strong><br>${detail}<br>` +
+            `<code>${Object.entries(tags).map(([k, v]) => `${k}=${v}`).join('<br>')}</code><br>` +
+            `<a href="https://www.openstreetmap.org/way/${p.id}" target="_blank">View on OSM</a>`
+        ).openOn(map);
+    });
+
+    const legend = L.control({ position: 'topright' });
+    legend.onAdd = () => {
+        // Starts collapsed to the ℹ️ button; tapping it opens the legend, ✕ closes it.
+        const div = L.DomUtil.create('div', 'legend collapsed');
+        // div.innerHTML = '<h4>Boston, Brookline &amp; Cambridge Bike Lanes</h4>' + TYPES.map(t => `
+        div.innerHTML = '<button class="legend-open" aria-label="Show legend">ℹ️</button>' +
+            '<div class="legend-body"><button class="legend-close" aria-label="Hide legend">✕</button>' +
+            TYPES.map(t => `
+            <label>
+                <input type="checkbox" data-key="${t.key}" checked>
+                <span class="swatch" style="background: ${t.color}"></span>
+                ${t.label}
+            </label>`).join('') + '</div>';
+        div.querySelector('.legend-open').addEventListener('click', () => div.classList.remove('collapsed'));
+        div.querySelector('.legend-close').addEventListener('click', () => div.classList.add('collapsed'));
+        div.addEventListener('change', e => {
+            e.target.checked ? hidden.delete(e.target.dataset.key) : hidden.add(e.target.dataset.key);
+            applyFilters();
+        });
+        L.DomEvent.disableClickPropagation(div);
+        return div;
+    };
+    legend.addTo(map);
+</script>
+</body>
+</html>
