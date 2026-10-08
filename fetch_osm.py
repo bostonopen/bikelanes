@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch Boston, Brookline, Cambridge, and Watertown bike infrastructure from OpenStreetMap (Overpass API) and write bikelanes.geojson."""
+"""Fetch Boston, Brookline, Cambridge, Somerville, and Watertown bike infrastructure from OpenStreetMap (Overpass API) and write bikelanes.geojson."""
 import json
 import sys
 import urllib.error
@@ -17,7 +17,7 @@ OUTPUT = "bikelanes.geojson"
 # The bbox keeps out other towns with these names.
 QUERY = """
 [out:json][timeout:180][bbox:42.20,-71.25,42.45,-70.95];
-area["boundary"="administrative"]["admin_level"="8"]["name"~"^(Boston|Brookline|Cambridge|Watertown)$"]->.towns;
+area["boundary"="administrative"]["admin_level"="8"]["name"~"^(Boston|Brookline|Cambridge|Somerville|Watertown)$"]->.towns;
 (
   way["highway"="cycleway"](area.towns);
   way["highway"~"^(path|footway|pedestrian|track)$"]["bicycle"="designated"](area.towns);
