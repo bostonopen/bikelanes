@@ -16,8 +16,8 @@ OUTPUT = "bikelanes.geojson"
 
 # The bbox keeps out other towns with these names.
 QUERY = """
-[out:json][timeout:180][bbox:42.20,-71.30,42.45,-70.95];
-area["boundary"="administrative"]["admin_level"="8"]["name"~"^(Boston|Brookline|Cambridge|Newton|Somerville|Watertown)$"]->.towns;
+[out:json][timeout:180][bbox:42.20,-71.30,42.47,-70.95];
+area["boundary"="administrative"]["admin_level"="8"]["name"~"^(Arlington|Boston|Brookline|Cambridge|Newton|Somerville|Watertown)$"]->.towns;
 (
   way["highway"="cycleway"](area.towns);
   way["highway"~"^(path|footway|pedestrian|track)$"]["bicycle"="designated"](area.towns);
