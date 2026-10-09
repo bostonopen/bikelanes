@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch Boston, Brookline, Cambridge, Newton, Somerville, and Watertown bike infrastructure from OpenStreetMap (Overpass API) and write bikelanes.geojson."""
+"""Fetch Boston (and surrounding) bike infrastructure data from OpenStreetMap (Overpass API) and write bikelanes.geojson."""
 import json
 import sys
 import urllib.error
