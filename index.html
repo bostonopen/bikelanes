@@ -65,7 +65,7 @@
     ];
 
     // Riding direction for each side of a road, relative to the way's drawing direction:
-    // 'fwd', 'back', or null for no arrows (e.g. a two-way lane).
+    // 'fwd', 'back', 'both' for a two-way lane (double-headed arrows), or null for no arrows.
     // An explicit cycleway:<side>:oneway (or cycleway:both:oneway) tag wins. Otherwise, on a two-way
     // street you ride on the right, so the right side goes forward and the left side backward.
     // On a one-way street both sides go with traffic, except contraflow lanes: "opposite_*" values,
@@ -80,7 +80,7 @@
             const sideDir = (side, twoWayDir) => {
                 if (p.kind !== 'road' || !p[side]) return null;
                 const explicit = t[`cycleway:${side}:oneway`] ?? t['cycleway:both:oneway'];
-                if (explicit !== undefined) return onewayDir(explicit);
+                if (explicit !== undefined) return explicit === 'no' ? 'both' : onewayDir(explicit);
                 if (!oneway) return twoWayDir;
                 const value = t[`cycleway:${side}`] || t['cycleway:both'] || t.cycleway || '';
                 if (value.startsWith('opposite')) return flip(oneway);
@@ -104,7 +104,14 @@
         if (dir === 'back') { ctx.translate(size, 0); ctx.scale(-1, 1); }
         ctx.scale(2, 2); // the shape below is drawn on a 40x40 grid
         ctx.beginPath();
-        ctx.moveTo(7, 6); ctx.lineTo(35, 20); ctx.lineTo(7, 34); ctx.lineTo(14, 20); ctx.closePath();
+        if (dir === 'both') {
+            // Double-headed arrow: a head at each end joined by a short shaft.
+            ctx.moveTo(2, 20); ctx.lineTo(14, 8); ctx.lineTo(14, 15); ctx.lineTo(26, 15); ctx.lineTo(26, 8);
+            ctx.lineTo(38, 20); ctx.lineTo(26, 32); ctx.lineTo(26, 25); ctx.lineTo(14, 25); ctx.lineTo(14, 32);
+        } else {
+            ctx.moveTo(7, 6); ctx.lineTo(35, 20); ctx.lineTo(7, 34); ctx.lineTo(14, 20);
+        }
+        ctx.closePath();
         ctx.lineJoin = 'round';
         ctx.lineWidth = 5;
         ctx.strokeStyle = '#fff';
@@ -135,7 +142,7 @@
 
     glMap.on('load', () => {
         for (const t of TYPES) {
-            for (const dir of ['fwd', 'back']) {
+            for (const dir of ['fwd', 'back', 'both']) {
                 glMap.addImage(`arrow-${t.key}-${dir}`, arrowImage(t.color, dir), { pixelRatio: 2 });
             }
         }
