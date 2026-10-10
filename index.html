@@ -69,6 +69,8 @@
 
     glMap.on('load', () => {
         glMap.addSource('bikelanes', { type: 'geojson', data: 'bikelanes.geojson' });
+        // Insert below the basemap's first label layer so street names draw on top of the bike lanes.
+        const firstLabel = glMap.getStyle().layers.find(l => l.type === 'symbol')?.id;
         for (const l of LAYERS) {
             glMap.addLayer({
                 id: l.id,
@@ -76,7 +78,16 @@
                 source: 'bikelanes',
                 layout: { 'line-cap': 'butt', 'line-join': 'round' },
                 paint: { 'line-color': colorMatch(l.prop), 'line-width': width, 'line-offset': l.offset },
-            });
+            }, firstLabel);
+        }
+        // Darker street names, shifted to the side of the street (in ems, growing with zoom
+        // like the bike lane offset) so they don't cover the bike lanes.
+        const labelOffset = ['interpolate', ['linear'], ['zoom'],
+            12, ['literal', [0, 1.0]], 16, ['literal', [0, 1.3]], 19, ['literal', [0, 1.6]]];
+        for (const id of ['highway-name-path', 'highway-name-minor', 'highway-name-major']) {
+            if (!glMap.getLayer(id)) continue;
+            glMap.setPaintProperty(id, 'text-color', '#333');
+            glMap.setLayoutProperty(id, 'text-offset', labelOffset);
         }
         applyFilters();
     });
