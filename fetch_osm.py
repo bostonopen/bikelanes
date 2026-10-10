@@ -32,6 +32,8 @@ SIDE_TYPES = {
     "shared_lane": "shared", "share_busway": "shared", "opposite_share_busway": "shared",
 }
 CYCLEWAY_TAGS = ("cycleway", "cycleway:both", "cycleway:left", "cycleway:right")
+# Tags the map needs to work out which way each lane runs (e.g. contraflow lanes on one-way streets).
+DIRECTION_TAGS = ("oneway", "oneway:bicycle", "cycleway:both:oneway", "cycleway:left:oneway", "cycleway:right:oneway")
 
 
 def side(tags, which):
@@ -81,7 +83,7 @@ def main():
                 "left": side(tags, "left") if kind == "road" else None,
                 "right": side(tags, "right") if kind == "road" else None,
                 "name": tags.get("name"),
-                "tags": {k: tags[k] for k in ("highway", "oneway", *CYCLEWAY_TAGS) if k in tags},
+                "tags": {k: tags[k] for k in ("highway", *CYCLEWAY_TAGS, *DIRECTION_TAGS) if k in tags},
             },
             "geometry": {
                 "type": "LineString",

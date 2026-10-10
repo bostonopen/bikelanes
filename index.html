@@ -64,20 +64,29 @@
           arrowType: 'track' },
     ];
 
-    // Riding direction for each side of a road, relative to the way's drawing direction.
-    // On a two-way street you ride on the right, so the right side goes forward and the left side backward.
-    // On a one-way street both sides go with traffic, except contraflow ("opposite_*") lanes.
+    // Riding direction for each side of a road, relative to the way's drawing direction:
+    // 'fwd', 'back', or null for no arrows (e.g. a two-way lane).
+    // An explicit cycleway:<side>:oneway (or cycleway:both:oneway) tag wins. Otherwise, on a two-way
+    // street you ride on the right, so the right side goes forward and the left side backward.
+    // On a one-way street both sides go with traffic, except contraflow lanes: "opposite_*" values,
+    // or a lane on the left of traffic when bikes may ride both ways (oneway:bicycle=no).
     // Off-road cycleways and paths only get a direction when tagged one-way.
+    const onewayDir = v => ['yes', '1'].includes(v) ? 'fwd' : v === '-1' ? 'back' : null;
     function addDirections(data) {
         const flip = d => d === 'fwd' ? 'back' : 'fwd';
         for (const { properties: p } of data.features) {
             const t = p.tags || {};
-            const oneway = ['yes', '1'].includes(t.oneway) ? 'fwd' : t.oneway === '-1' ? 'back' : null;
+            const oneway = onewayDir(t.oneway);
             const sideDir = (side, twoWayDir) => {
                 if (p.kind !== 'road' || !p[side]) return null;
+                const explicit = t[`cycleway:${side}:oneway`] ?? t['cycleway:both:oneway'];
+                if (explicit !== undefined) return onewayDir(explicit);
                 if (!oneway) return twoWayDir;
                 const value = t[`cycleway:${side}`] || t['cycleway:both'] || t.cycleway || '';
-                return value.startsWith('opposite') ? flip(oneway) : oneway;
+                if (value.startsWith('opposite')) return flip(oneway);
+                const leftOfTraffic = side === (oneway === 'fwd' ? 'left' : 'right');
+                if (t['oneway:bicycle'] === 'no' && leftOfTraffic && p[side] !== 'shared') return flip(oneway);
+                return oneway;
             };
             p.leftDir = sideDir('left', 'back');
             p.rightDir = sideDir('right', 'fwd');
@@ -131,7 +140,7 @@
             }
         }
         glMap.addSource('bikelanes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-        fetch('bikelanes.geojson')
+        fetch('bikelanes.geojson', { cache: 'no-cache' }) // revalidate so a re-fetched data file shows up
             .then(r => r.json())
             .then(data => glMap.getSource('bikelanes').setData(addDirections(data)));
         // Insert below the basemap's first label layer so street names draw on top of the bike lanes.
