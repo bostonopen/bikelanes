@@ -32,17 +32,20 @@
     // Roads get one line per side (left/right relative to the OSM way direction);
     // standalone cycleways and paths get a single centered line.
     const TYPES = [
-        { key: 'cycleway', label: 'Cycleway (off-road)',     color: '#1a7f37' },
+        { key: 'cycleway', label: 'Cycleway (off-road)',     color: '#d4a017' },
         { key: 'track',    label: 'Separated bike lane',     color: '#1a7f37' },
         { key: 'lane',     label: 'Standard bike lane',      color: '#1a7f37' },
-        { key: 'path',     label: 'Shared use path',         color: '#8250df' },
+        { key: 'path',     label: 'Shared use path',         color: '#1a7f37' },
         { key: 'shared',   label: 'Shared bike lane',        color: '#d1242f' },
     ];
     const colorOf = key => TYPES.find(t => t.key === key).color;
     const colorMatch = prop => ['match', ['get', prop], ...TYPES.flatMap(t => [t.key, t.color]), '#888'];
 
     // Gap between the two side lines grows with zoom so they stay distinct.
-    const width = ['interpolate', ['linear'], ['zoom'], 12, 1.5, 16, 3, 19, 5];
+    // Off-road cycleways are drawn twice as thick.
+    const thickness = ['case', ['==', ['get', 'kind'], 'cycleway'], 2, 1];
+    const width = ['interpolate', ['linear'], ['zoom'],
+        12, ['*', thickness, 1.5], 16, ['*', thickness, 3], 19, ['*', thickness, 5]];
     const offset = sign => ['interpolate', ['linear'], ['zoom'], 12, sign * 1.5, 16, sign * 3, 19, sign * 6];
 
     // The same offsets for the arrow icons, as [x, y] where +y is the right side of the line.
@@ -56,7 +59,9 @@
     const LAYERS = [
         { id: 'bike-left',   prop: 'left',  dir: 'leftDir',   filter: ['==', ['get', 'kind'], 'road'], offset: offset(-1), iconOffset: iconOffset(-1) },
         { id: 'bike-right',  prop: 'right', dir: 'rightDir',  filter: ['==', ['get', 'kind'], 'road'], offset: offset(1),  iconOffset: iconOffset(1) },
-        { id: 'bike-center', prop: 'kind',  dir: 'centerDir', filter: ['!=', ['get', 'kind'], 'road'], offset: 0,          iconOffset: iconOffset(0) },
+        { id: 'bike-center', prop: 'kind',  dir: 'centerDir', filter: ['!=', ['get', 'kind'], 'road'], offset: 0,          iconOffset: iconOffset(0),
+          color: ['case', ['to-boolean', ['get', 'centerDir']], colorOf('track'), colorMatch('kind')],
+          arrowType: 'track' },
     ];
 
     // Riding direction for each side of a road, relative to the way's drawing direction.
@@ -137,7 +142,7 @@
                 type: 'line',
                 source: 'bikelanes',
                 layout: { 'line-cap': 'butt', 'line-join': 'round' },
-                paint: { 'line-color': colorMatch(l.prop), 'line-width': width, 'line-offset': l.offset },
+                paint: { 'line-color': l.color ?? colorMatch(l.prop), 'line-width': width, 'line-offset': l.offset },
             }, firstLabel);
         }
         for (const l of LAYERS) {
@@ -149,7 +154,7 @@
                 layout: {
                     'symbol-placement': 'line',
                     'symbol-spacing': 80,
-                    'icon-image': ['concat', 'arrow-', ['get', l.prop], '-', ['get', l.dir]],
+                    'icon-image': ['concat', 'arrow-', l.arrowType ?? ['get', l.prop], '-', ['get', l.dir]],
                     'icon-offset': l.iconOffset,
                     'icon-size': arrowSize,
                     'icon-rotation-alignment': 'map',
