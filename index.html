@@ -45,11 +45,60 @@
     const width = ['interpolate', ['linear'], ['zoom'], 12, 1.5, 16, 3, 19, 5];
     const offset = sign => ['interpolate', ['linear'], ['zoom'], 12, sign * 1.5, 16, sign * 3, 19, sign * 6];
 
+    // The same offsets for the arrow icons, as [x, y] where +y is the right side of the line.
+    // MapLibre multiplies icon-offset by icon-size, so these are the line offsets divided by arrowSize.
+    const arrowSize = ['interpolate', ['linear'], ['zoom'], 12, 0.35, 13, 0.45, 14, 0.5, 15, 0.6, 18, 1];
+    const iconOffset = sign => ['interpolate', ['linear'], ['zoom'],
+        12, ['literal', [0, sign * 4.3]], 13, ['literal', [0, sign * 4.2]], 14, ['literal', [0, sign * 4.5]],
+        15, ['literal', [0, sign * 4.3]], 16, ['literal', [0, sign * 4.1]], 18, ['literal', [0, sign * 5]], 19, ['literal', [0, sign * 6]]];
+
+    // `dir` is the property holding the riding direction ('fwd'/'back' along the way), set by addDirections().
     const LAYERS = [
-        { id: 'bike-left',   prop: 'left',  filter: ['==', ['get', 'kind'], 'road'], offset: offset(-1) },
-        { id: 'bike-right',  prop: 'right', filter: ['==', ['get', 'kind'], 'road'], offset: offset(1) },
-        { id: 'bike-center', prop: 'kind',  filter: ['!=', ['get', 'kind'], 'road'], offset: 0 },
+        { id: 'bike-left',   prop: 'left',  dir: 'leftDir',   filter: ['==', ['get', 'kind'], 'road'], offset: offset(-1), iconOffset: iconOffset(-1) },
+        { id: 'bike-right',  prop: 'right', dir: 'rightDir',  filter: ['==', ['get', 'kind'], 'road'], offset: offset(1),  iconOffset: iconOffset(1) },
+        { id: 'bike-center', prop: 'kind',  dir: 'centerDir', filter: ['!=', ['get', 'kind'], 'road'], offset: 0,          iconOffset: iconOffset(0) },
     ];
+
+    // Riding direction for each side of a road, relative to the way's drawing direction.
+    // On a two-way street you ride on the right, so the right side goes forward and the left side backward.
+    // On a one-way street both sides go with traffic, except contraflow ("opposite_*") lanes.
+    // Off-road cycleways and paths only get a direction when tagged one-way.
+    function addDirections(data) {
+        const flip = d => d === 'fwd' ? 'back' : 'fwd';
+        for (const { properties: p } of data.features) {
+            const t = p.tags || {};
+            const oneway = ['yes', '1'].includes(t.oneway) ? 'fwd' : t.oneway === '-1' ? 'back' : null;
+            const sideDir = (side, twoWayDir) => {
+                if (p.kind !== 'road' || !p[side]) return null;
+                if (!oneway) return twoWayDir;
+                const value = t[`cycleway:${side}`] || t['cycleway:both'] || t.cycleway || '';
+                return value.startsWith('opposite') ? flip(oneway) : oneway;
+            };
+            p.leftDir = sideDir('left', 'back');
+            p.rightDir = sideDir('right', 'fwd');
+            p.centerDir = p.kind === 'road' ? null : oneway;
+        }
+        return data;
+    }
+
+    // Arrow icons, one per color and direction, named like 'arrow-lane-fwd'.
+    function arrowImage(color, dir) {
+        const size = 80; // drawn at 2x, so 40 CSS pixels
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (dir === 'back') { ctx.translate(size, 0); ctx.scale(-1, 1); }
+        ctx.scale(2, 2); // the shape below is drawn on a 40x40 grid
+        ctx.beginPath();
+        ctx.moveTo(7, 6); ctx.lineTo(35, 20); ctx.lineTo(7, 34); ctx.lineTo(14, 20); ctx.closePath();
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = '#fff';
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.fill();
+        return ctx.getImageData(0, 0, size, size);
+    }
 
     const map = L.map('map', { zoomControl: false }).setView([42.342144, -71.121273], 16);
 
@@ -59,16 +108,27 @@
     }).addTo(map);
     const glMap = gl.getMaplibreMap();
 
-    const hidden = new Set();
+    // Legend types that start unchecked.
+    const hidden = new Set(['shared']);
     function applyFilters() {
         const visible = ['literal', TYPES.map(t => t.key).filter(k => !hidden.has(k))];
         for (const l of LAYERS) {
-            glMap.setFilter(l.id, ['all', l.filter, ['in', ['get', l.prop], visible]]);
+            const filter = ['all', l.filter, ['in', ['get', l.prop], visible]];
+            glMap.setFilter(l.id, filter);
+            glMap.setFilter(`${l.id}-arrows`, ['all', filter, ['has', l.dir]]);
         }
     }
 
     glMap.on('load', () => {
-        glMap.addSource('bikelanes', { type: 'geojson', data: 'bikelanes.geojson' });
+        for (const t of TYPES) {
+            for (const dir of ['fwd', 'back']) {
+                glMap.addImage(`arrow-${t.key}-${dir}`, arrowImage(t.color, dir), { pixelRatio: 2 });
+            }
+        }
+        glMap.addSource('bikelanes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+        fetch('bikelanes.geojson')
+            .then(r => r.json())
+            .then(data => glMap.getSource('bikelanes').setData(addDirections(data)));
         // Insert below the basemap's first label layer so street names draw on top of the bike lanes.
         const firstLabel = glMap.getStyle().layers.find(l => l.type === 'symbol')?.id;
         for (const l of LAYERS) {
@@ -78,6 +138,24 @@
                 source: 'bikelanes',
                 layout: { 'line-cap': 'butt', 'line-join': 'round' },
                 paint: { 'line-color': colorMatch(l.prop), 'line-width': width, 'line-offset': l.offset },
+            }, firstLabel);
+        }
+        for (const l of LAYERS) {
+            glMap.addLayer({
+                id: `${l.id}-arrows`,
+                type: 'symbol',
+                source: 'bikelanes',
+                minzoom: 12,
+                layout: {
+                    'symbol-placement': 'line',
+                    'symbol-spacing': 80,
+                    'icon-image': ['concat', 'arrow-', ['get', l.prop], '-', ['get', l.dir]],
+                    'icon-offset': l.iconOffset,
+                    'icon-size': arrowSize,
+                    'icon-rotation-alignment': 'map',
+                    'icon-allow-overlap': true,
+                    'icon-ignore-placement': true,
+                },
             }, firstLabel);
         }
         // Darker street names, shifted to the side of the street (in ems, growing with zoom
@@ -120,7 +198,7 @@
             '<div class="legend-body"><button class="legend-close" aria-label="Hide legend">✕</button>' +
             TYPES.map(t => `
             <label>
-                <input type="checkbox" data-key="${t.key}" checked>
+                <input type="checkbox" data-key="${t.key}" ${hidden.has(t.key) ? '' : 'checked'}>
                 <span class="swatch" style="background: ${t.color}"></span>
                 ${t.label}
             </label>`).join('') + '</div>';
