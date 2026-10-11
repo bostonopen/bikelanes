@@ -18,7 +18,7 @@
         .legend button { border: 0; background: none; cursor: pointer; padding: 0; font: inherit; }
         .legend-open { font-size: 22px; line-height: 1; }
         .legend-close { float: right; margin-left: 12px; font-size: 16px; color: #555; }
-        .legend.collapsed { padding: 6px; }
+        .legend.collapsed { padding: 0; width: 29px; height: 29px; display: flex; align-items: center; justify-content: center; } /* same size as the compass and location buttons */
         .legend.collapsed .legend-body, .legend:not(.collapsed) .legend-open { display: none; }
     </style>
 </head>
@@ -137,8 +137,6 @@
         }),
         onRemove: () => {},
     }, 'bottom-right');
-    // Compass only (no +/- buttons); it shows the current rotation and tapping it turns the map back to north.
-    map.addControl(new maplibregl.NavigationControl({ showZoom: false, visualizePitch: false }), 'top-left');
 
     // Legend types that start unchecked.
     const hidden = new Set(['shared']);
@@ -243,6 +241,16 @@
         applyFilters();
     });
     map.addControl({ onAdd: () => legend, onRemove: () => legend.remove() }, 'top-right');
+    // Added after the legend so they stack under the ℹ️ button.
+    // Compass only (no +/- buttons); it shows the current rotation and tapping it turns the map back to north.
+    map.addControl(new maplibregl.NavigationControl({ showZoom: false, visualizePitch: false }), 'top-right');
+    // Location button: tapping it asks for permission, then shows a blue dot that follows the viewer
+    // (with a cone showing which way they face, on devices that report it).
+    map.addControl(new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+        showUserHeading: true,
+    }), 'top-right');
 </script>
 </body>
 </html>
