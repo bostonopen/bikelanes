@@ -5,12 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Boston Bike Lanes</title>
 
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
     <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
-    <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
 
     <style>
         html, body, #map { height: 100%; margin: 0; }
@@ -121,13 +117,17 @@
         return ctx.getImageData(0, 0, size, size);
     }
 
-    const map = L.map('map', { zoomControl: false }).setView([42.342144, -71.121273], 16);
-
-    const gl = L.maplibreGL({
+    // Two-finger twist (mobile) or right-click/ctrl-drag (desktop) rotates the map; tilting is turned off.
+    const map = new maplibregl.Map({
+        container: 'map',
         style: 'https://tiles.openfreemap.org/styles/positron',
-        attribution: '<a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(map);
-    const glMap = gl.getMaplibreMap();
+        center: [-71.121273, 42.342144],
+        zoom: 15,
+        pitchWithRotate: false,
+        touchPitch: false,
+    });
+    // Compass only (no +/- buttons); it shows the current rotation and tapping it turns the map back to north.
+    map.addControl(new maplibregl.NavigationControl({ showZoom: false, visualizePitch: false }), 'top-left');
 
     // Legend types that start unchecked.
     const hidden = new Set(['shared']);
@@ -135,25 +135,25 @@
         const visible = ['literal', TYPES.map(t => t.key).filter(k => !hidden.has(k))];
         for (const l of LAYERS) {
             const filter = ['all', l.filter, ['in', ['get', l.prop], visible]];
-            glMap.setFilter(l.id, filter);
-            glMap.setFilter(`${l.id}-arrows`, ['all', filter, ['has', l.dir]]);
+            map.setFilter(l.id, filter);
+            map.setFilter(`${l.id}-arrows`, ['all', filter, ['has', l.dir]]);
         }
     }
 
-    glMap.on('load', () => {
+    map.on('load', () => {
         for (const t of TYPES) {
             for (const dir of ['fwd', 'back', 'both']) {
-                glMap.addImage(`arrow-${t.key}-${dir}`, arrowImage(t.color, dir), { pixelRatio: 2 });
+                map.addImage(`arrow-${t.key}-${dir}`, arrowImage(t.color, dir), { pixelRatio: 2 });
             }
         }
-        glMap.addSource('bikelanes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+        map.addSource('bikelanes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
         fetch('bikelanes.geojson', { cache: 'no-cache' }) // revalidate so a re-fetched data file shows up
             .then(r => r.json())
-            .then(data => glMap.getSource('bikelanes').setData(addDirections(data)));
+            .then(data => map.getSource('bikelanes').setData(addDirections(data)));
         // Insert below the basemap's first label layer so street names draw on top of the bike lanes.
-        const firstLabel = glMap.getStyle().layers.find(l => l.type === 'symbol')?.id;
+        const firstLabel = map.getStyle().layers.find(l => l.type === 'symbol')?.id;
         for (const l of LAYERS) {
-            glMap.addLayer({
+            map.addLayer({
                 id: l.id,
                 type: 'line',
                 source: 'bikelanes',
@@ -162,7 +162,7 @@
             }, firstLabel);
         }
         for (const l of LAYERS) {
-            glMap.addLayer({
+            map.addLayer({
                 id: `${l.id}-arrows`,
                 type: 'symbol',
                 source: 'bikelanes',
@@ -184,9 +184,9 @@
         const labelOffset = ['interpolate', ['linear'], ['zoom'],
             12, ['literal', [0, 1.0]], 16, ['literal', [0, 1.3]], 19, ['literal', [0, 1.6]]];
         for (const id of ['highway-name-path', 'highway-name-minor', 'highway-name-major']) {
-            if (!glMap.getLayer(id)) continue;
-            glMap.setPaintProperty(id, 'text-color', '#333');
-            glMap.setLayoutProperty(id, 'text-offset', labelOffset);
+            if (!map.getLayer(id)) continue;
+            map.setPaintProperty(id, 'text-color', '#333');
+            map.setLayoutProperty(id, 'text-offset', labelOffset);
         }
         applyFilters();
     });
@@ -194,45 +194,44 @@
     const sideLabel = v => v ? TYPES.find(t => t.key === v).label : 'none';
 
     map.on('click', e => {
-        const pt = glMap.project([e.latlng.lng, e.latlng.lat]);
-        const box = [[pt.x - 5, pt.y - 5], [pt.x + 5, pt.y + 5]];
-        const f = glMap.queryRenderedFeatures(box, { layers: LAYERS.map(l => l.id) })[0];
+        const box = [[e.point.x - 5, e.point.y - 5], [e.point.x + 5, e.point.y + 5]];
+        const f = map.queryRenderedFeatures(box, { layers: LAYERS.map(l => l.id) })[0];
         if (!f) return;
         const p = f.properties;
         const tags = JSON.parse(p.tags || '{}');
         const detail = p.kind === 'road'
             ? `Left: ${sideLabel(p.left)}<br>Right: ${sideLabel(p.right)}`
             : sideLabel(p.kind);
-        L.popup().setLatLng(e.latlng).setContent(
+        new maplibregl.Popup().setLngLat(e.lngLat).setHTML(
             `<strong>${p.name || 'Unnamed'}</strong><br>${detail}<br>` +
             `<code>${Object.entries(tags).map(([k, v]) => `${k}=${v}`).join('<br>')}</code><br>` +
             `<a href="https://www.openstreetmap.org/way/${p.id}" target="_blank">View on OSM</a>`
-        ).openOn(map);
+        ).addTo(map);
     });
+    for (const l of LAYERS) {
+        map.on('mouseenter', l.id, () => map.getCanvas().style.cursor = 'pointer');
+        map.on('mouseleave', l.id, () => map.getCanvas().style.cursor = '');
+    }
 
-    const legend = L.control({ position: 'topright' });
-    legend.onAdd = () => {
-        // Starts collapsed to the ℹ️ button; tapping it opens the legend, ✕ closes it.
-        const div = L.DomUtil.create('div', 'legend collapsed');
-        // div.innerHTML = '<h4>Boston, Brookline &amp; Cambridge Bike Lanes</h4>' + TYPES.map(t => `
-        div.innerHTML = '<button class="legend-open" aria-label="Show legend">ℹ️</button>' +
-            '<div class="legend-body"><button class="legend-close" aria-label="Hide legend">✕</button>' +
-            TYPES.map(t => `
-            <label>
-                <input type="checkbox" data-key="${t.key}" ${hidden.has(t.key) ? '' : 'checked'}>
-                <span class="swatch" style="background: ${t.color}"></span>
-                ${t.label}
-            </label>`).join('') + '</div>';
-        div.querySelector('.legend-open').addEventListener('click', () => div.classList.remove('collapsed'));
-        div.querySelector('.legend-close').addEventListener('click', () => div.classList.add('collapsed'));
-        div.addEventListener('change', e => {
-            e.target.checked ? hidden.delete(e.target.dataset.key) : hidden.add(e.target.dataset.key);
-            applyFilters();
-        });
-        L.DomEvent.disableClickPropagation(div);
-        return div;
-    };
-    legend.addTo(map);
+    // Starts collapsed to the ℹ️ button; tapping it opens the legend, ✕ closes it.
+    const legend = document.createElement('div');
+    legend.className = 'maplibregl-ctrl legend collapsed';
+    // legend.innerHTML = '<h4>Boston, Brookline &amp; Cambridge Bike Lanes</h4>' + TYPES.map(t => `
+    legend.innerHTML = '<button class="legend-open" aria-label="Show legend">ℹ️</button>' +
+        '<div class="legend-body"><button class="legend-close" aria-label="Hide legend">✕</button>' +
+        TYPES.map(t => `
+        <label>
+            <input type="checkbox" data-key="${t.key}" ${hidden.has(t.key) ? '' : 'checked'}>
+            <span class="swatch" style="background: ${t.color}"></span>
+            ${t.label}
+        </label>`).join('') + '</div>';
+    legend.querySelector('.legend-open').addEventListener('click', () => legend.classList.remove('collapsed'));
+    legend.querySelector('.legend-close').addEventListener('click', () => legend.classList.add('collapsed'));
+    legend.addEventListener('change', e => {
+        e.target.checked ? hidden.delete(e.target.dataset.key) : hidden.add(e.target.dataset.key);
+        applyFilters();
+    });
+    map.addControl({ onAdd: () => legend, onRemove: () => legend.remove() }, 'top-right');
 </script>
 </body>
 </html>
