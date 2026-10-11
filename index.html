@@ -125,7 +125,18 @@
         zoom: 15,
         pitchWithRotate: false,
         touchPitch: false,
+        attributionControl: false, // replaced by the shorter one below so it fits on one line on phones
     });
+    map.addControl({
+        onAdd: () => Object.assign(document.createElement('div'), {
+            className: 'maplibregl-ctrl maplibregl-ctrl-attrib',
+            innerHTML: '<div class="maplibregl-ctrl-attrib-inner">' +
+                '<a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap</a> &middot; ' +
+                '<a href="https://www.openmaptiles.org/" target="_blank">OpenMapTiles</a> &middot; ' +
+                '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a></div>',
+        }),
+        onRemove: () => {},
+    }, 'bottom-right');
     // Compass only (no +/- buttons); it shows the current rotation and tapping it turns the map back to north.
     map.addControl(new maplibregl.NavigationControl({ showZoom: false, visualizePitch: false }), 'top-left');
 
