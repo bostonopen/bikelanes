@@ -46,11 +46,13 @@
     const offset = sign => ['interpolate', ['linear'], ['zoom'], 12, sign * 1.5, 16, sign * 3, 19, sign * 6];
 
     // The same offsets for the arrow icons, as [x, y] where +y is the right side of the line.
-    // MapLibre multiplies icon-offset by icon-size, so these are the line offsets divided by arrowSize.
+    // x shifts arrows along the line: left-side arrows back and right-side arrows forward by 20px
+    // (a quarter of symbol-spacing), so arrows on the two sides of a street alternate instead of overlapping.
+    // MapLibre multiplies icon-offset by icon-size, so these are pixel offsets divided by arrowSize.
     const arrowSize = ['interpolate', ['linear'], ['zoom'], 12, 0.35, 13, 0.45, 14, 0.5, 15, 0.6, 18, 1];
     const iconOffset = sign => ['interpolate', ['linear'], ['zoom'],
-        12, ['literal', [0, sign * 4.3]], 13, ['literal', [0, sign * 4.2]], 14, ['literal', [0, sign * 4.5]],
-        15, ['literal', [0, sign * 4.3]], 16, ['literal', [0, sign * 4.1]], 18, ['literal', [0, sign * 5]], 19, ['literal', [0, sign * 6]]];
+        ...[[12, 57, 4.3], [13, 44, 4.2], [14, 40, 4.5], [15, 33, 4.3], [16, 27, 4.1], [18, 20, 5], [19, 20, 6]]
+            .flatMap(([zoom, x, y]) => [zoom, ['literal', [sign * x, sign * y]]])];
 
     // `dir` is the property holding the riding direction ('fwd'/'back' along the way), set by addDirections().
     const LAYERS = [
