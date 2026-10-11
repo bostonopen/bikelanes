@@ -117,14 +117,13 @@
         return ctx.getImageData(0, 0, size, size);
     }
 
-    // Two-finger twist (mobile) or right-click/ctrl-drag (desktop) rotates the map; tilting is turned off.
+    // Two-finger twist (mobile) or right-click/ctrl-drag left and right (desktop) rotates the map;
+    // two fingers sliding up and down (mobile) or right-click/ctrl-drag up and down (desktop) tilts it.
     const map = new maplibregl.Map({
         container: 'map',
         style: 'https://tiles.openfreemap.org/styles/positron',
         center: [-71.121273, 42.342144],
         zoom: 15,
-        pitchWithRotate: false,
-        touchPitch: false,
         attributionControl: false, // replaced by the shorter one below so it fits on one line on phones
     });
     map.addControl({
@@ -242,8 +241,9 @@
     });
     map.addControl({ onAdd: () => legend, onRemove: () => legend.remove() }, 'top-right');
     // Added after the legend so they stack under the ℹ️ button.
-    // Compass only (no +/- buttons); it shows the current rotation and tapping it turns the map back to north.
-    map.addControl(new maplibregl.NavigationControl({ showZoom: false, visualizePitch: false }), 'top-right');
+    // Compass only (no +/- buttons); it shows the current rotation and tilt, and tapping it
+    // turns the map back to north and flat.
+    map.addControl(new maplibregl.NavigationControl({ showZoom: false, visualizePitch: true }), 'top-right');
     // Location button: tapping it asks for permission, then shows a blue dot that follows the viewer
     // (with a cone showing which way they face, on devices that report it).
     map.addControl(new maplibregl.GeolocateControl({
