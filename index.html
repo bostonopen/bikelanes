@@ -199,6 +199,10 @@
             map.setPaintProperty(id, 'text-color', '#333');
             map.setLayoutProperty(id, 'text-offset', labelOffset);
         }
+        // Only label airports with an ICAO code (e.g. Logan, KBOS). The basemap labels anything with an
+        // IATA code, including "Boston Harbor Seaplane Base (Cape Air Seaplanes)", which we are hiding
+        // because it's so long and prominent.
+        if (map.getLayer('airport')) map.setFilter('airport', ['all', ['has', 'iata'], ['has', 'icao']]);
         applyFilters();
     });
 
